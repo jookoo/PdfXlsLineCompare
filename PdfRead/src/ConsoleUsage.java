@@ -2,11 +2,20 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,11 +42,23 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
  */
 public class ConsoleUsage {
 
-	final List<String> dataFromXLS = new LinkedList<>();
+	public static final DateTimeFormatter DTFXLS = DateTimeFormatter.ofPattern("dd-MMM-uuuu");
 	
-	final Set<Line> lines = new LinkedHashSet<>();
+	public static final DateTimeFormatter DTFL= DateTimeFormatter.ofPattern("dd.MM.yyyy");
 	
-	public static void main(String[] args) throws IOException {
+	public static final SimpleDateFormat SDF = new SimpleDateFormat("dd.MM.yyyy");
+	
+	final Set<Line> pdflines = new LinkedHashSet<>();
+	
+	final Set<Line> xmllines = new LinkedHashSet<>();
+	
+	final Set<Integer> relevantMonths = new LinkedHashSet<>();
+	
+	final Calendar tempcal = GregorianCalendar.getInstance();
+	
+	final boolean inverted = true;
+	
+	public static void main(String[] args) throws IOException, ParseException {
 		final ConsoleUsage cu = new ConsoleUsage();
 		if (0 == args.length) {
 			System.out.println("Keine Argumente gefunden");
@@ -58,27 +79,39 @@ public class ConsoleUsage {
 			}
 			
 		}
-		
-		cu.compose();
+		System.out.println(cu.relevantMonths);
+		cu.compose(cu.inverted);
 		cu.printOutput();
+		
 	}
 	
-	private void compose() {
-		for (Line fl: lines) {
-			for (String str: dataFromXLS) {
-				if (fl.number.equals(str)) {
-					fl.isin = true;
+	private void compose(final boolean inverted) throws ParseException {
+		if (inverted) {
+			for (Line fl: xmllines) {
+				for (Line line: pdflines) {
+					if (fl.number.equals(line.number)) {
+						fl.isin = true;
+					}
+				}
+			}
+			
+		} else {
+			for (Line fl: pdflines) {
+				for (Line line: xmllines) {
+					if (fl.number.equals(line.number)) {
+						fl.isin = true;
+					}
 				}
 			}
 		}
 		
 	}
 
-	private void readPdf(final String path) throws IOException {
+	private void readPdf(final String path) throws IOException, ParseException {
 		PDDocument pddDocument=PDDocument.load(new File(path));
 		PDFTextStripper textStripper=new PDFTextStripper();
 		final String text = textStripper.getText(pddDocument);
-		lines.addAll(new LineParser("(\\d{2}\\.\\d{2}\\.\\d{4})\\s\\d{4}\\s(\\d{10})\\s.+").parse(text));
+		pdflines.addAll(new LineParser("(\\d{2}\\.\\d{2}\\.\\d{4})\\s\\d{4}\\s(\\d{10})\\s.+").parse(text));
 		pddDocument.close();
 	}
 	
@@ -95,12 +128,15 @@ public class ConsoleUsage {
 		            Iterator<Row> rowIterator = sheet.iterator();
 		            while (rowIterator.hasNext()) {
 		                Row row = rowIterator.next();
-		                final Cell c1 = row.getCell(cellNumber);
-		                if (null != c1) {
-			                c1.setCellType(Cell.CELL_TYPE_STRING);
-			                dataFromXLS.add(c1.getStringCellValue());
+		                final Cell c0 = row.getCell(cellNumber);
+		                final Cell c2 = row.getCell(2);
+		                if (null != c0 && null != c2 && Cell.CELL_TYPE_NUMERIC == c2.getCellType()) {
+			                c0.setCellType(Cell.CELL_TYPE_STRING);
+			                final Date d = c2.getDateCellValue();
+			                final String str = SDF.format(d);
+			                final Line l = new Line(c0.getStringCellValue(), str);
+			                xmllines.add(l);
 		                }
-		
 		                	
 		            }
 	            }
@@ -135,16 +171,36 @@ public class ConsoleUsage {
 	public ConsoleUsage() {
 	}
 	
-	public void printOutput() {
+	public void printOutput() throws ParseException {
+		final Calendar cal = GregorianCalendar.getInstance();
 		int count = 0;
-		for (Line fl: lines) {
-			if (!fl.isin) {
-				System.out.println("FEHLT " + fl.toString());
-				count++;
-			} else {
+		if (inverted) {
+			System.out.println("Fehlt in der PDF (Monatsabhängig):");
+			for (Line fl: xmllines) {
+				cal.setTime(SDF.parse(fl.dat));
+				final int month = cal.get(Calendar.MONTH) + 1;
+                final int year = cal.get(Calendar.YEAR);
+                final int myear = month * 10000 + year;
+				if (relevantMonths.contains(myear)) {
+				if (!fl.isin) {
+					System.out.println("FEHLT " + fl.toString());
+					count++;
+				} else {
 //				System.out.println(fl.toString());
+				}
+				}
 			}
-			
+		} else {
+			System.out.println("Fehlt in der XLS:");
+			for (Line fl: pdflines) {
+				if (!fl.isin) {
+					System.out.println("FEHLT " + fl.toString());
+					count++;
+				} else {
+//				System.out.println(fl.toString());
+				}
+				
+			}
 		}
 		System.out.println(count);
 	}
@@ -157,13 +213,21 @@ public class ConsoleUsage {
 			this.pattern = pattern;
 		}
 		
-		public Set<Line> parse(final String text) {
+		public Set<Line> parse(final String text) throws ParseException {
 			final Set<Line> x = new LinkedHashSet<>();
 			final Pattern p = Pattern.compile(pattern);
 			final Matcher m = p.matcher(text);
 			while (m.find()) {
 				final String dat = m.group(1);
 				final String nr = m.group(2);
+				final Date d = SDF.parse(dat);
+				tempcal.setTime(d);
+                final int month = tempcal.get(Calendar.MONTH) + 1;
+                final int year = tempcal.get(Calendar.YEAR);
+                final int myear = month * 10000 + year;
+                if (!relevantMonths.contains(myear)) {
+                	relevantMonths.add(myear);
+                }
 				x.add(new Line(nr.trim().substring(3, nr.length()), dat));
 			}
 			return x;
@@ -177,8 +241,6 @@ public class ConsoleUsage {
 		private final String number;
 		
 		private final String dat;
-		
-		
 		
 		public Line(final String number, final String dat) {
 			this.number = number;
