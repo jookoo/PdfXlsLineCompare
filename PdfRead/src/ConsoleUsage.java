@@ -29,14 +29,13 @@ import org.apache.pdfbox.tools.PDFBox;
 import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 /**
  * Liest eine PDF/XLS Datei ein.
- * Bei der XLS Datei werden alle Blätter mit Jahreszahl (2016,2017 etc) eingelesen
+ * Bei der XLS Datei werden alle Blï¿½tter mit Jahreszahl (2016,2017 etc) eingelesen
  * @author Josh
  *
  */
@@ -175,7 +174,7 @@ public class ConsoleUsage {
 		final Calendar cal = GregorianCalendar.getInstance();
 		int count = 0;
 		if (inverted) {
-			System.out.println("Fehlt in der PDF (Monatsabhängig):");
+			System.out.println("Fehlt in der PDF (Monatsabhï¿½ngig):");
 			for (Line fl: xmllines) {
 				cal.setTime(SDF.parse(fl.dat));
 				final int month = cal.get(Calendar.MONTH) + 1;
